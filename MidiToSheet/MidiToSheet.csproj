@@ -70,6 +70,7 @@
     </Compile>
     <Compile Include="RestSymbol.cs" />
     <Compile Include="SheetMusic.cs" />
+    <Compile Include="SheetMusicPage.cs" />
     <Compile Include="Staff.cs" />
     <Compile Include="Stem.cs" />
     <Compile Include="SymbolWidths.cs" />

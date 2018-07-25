@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Drawing;
 using System.Drawing.Printing;
+using MidiToSheet;
 
 namespace MidiSheetMusic {
 
@@ -61,6 +62,7 @@ namespace MidiSheetMusic {
         public const int PageHeight = 1050;  /** The height of each page (when printing) */
         public static Font LetterFont;       /** The font for drawing the letters */
 
+        private List<SheetMusicPage> pages; /** The array of pages, containing the staffs of each page */
         private List<Staff> staffs; /** The array of staffs to display (from top to bottom) */
         private KeySignature mainkey; /** The main key signature */
         private int numtracks;     /** The number of tracks */
@@ -195,6 +197,9 @@ namespace MidiSheetMusic {
             //BackColor = Color.White;
 
             SetZoom(1.0f);
+
+            pages = new List<SheetMusicPage>();
+            SplitIntoPages();
         }
 
 
@@ -1036,6 +1041,57 @@ namespace MidiSheetMusic {
             font.Dispose();
         }
 
+        /** Break the sheet into pages */
+        private void SplitIntoPages()
+        {
+            int currheight = TitleHeight;
+            SheetMusicPage page = new SheetMusicPage();
+
+            if (numtracks == 2 && (staffs.Count % 2) == 0)
+            {
+                for (int i = 0; i < staffs.Count; i += 2)
+                {
+                    int heights = staffs[i].Height + staffs[i + 1].Height;
+                    if (currheight + heights > PageHeight)
+                    {
+                        pages.Add(page);
+                        page = new SheetMusicPage();
+                        currheight = heights;
+                    }
+                    else
+                    {
+                        currheight += heights;
+                    }
+                    // TODO: Do double staffs need to be handled specially, i.e. broken into tracks?
+                    page.staffs.Add(staffs[i]);
+                    page.staffs.Add(staffs[i + 1]);
+                }
+            }
+            else
+            {
+                foreach (Staff staff in staffs)
+                {
+                    if (currheight + staff.Height > PageHeight)
+                    {
+                        pages.Add(page);
+                        page = new SheetMusicPage();
+                        currheight = staff.Height;
+                    }
+                    else
+                    {
+                        currheight += staff.Height;
+                    }
+                    page.staffs.Add(staff);
+                }
+            }
+
+            // Add final page
+            if (!page.IsEmpty())
+            {
+                pages.Add(page);
+            }
+        }
+
         /** Print the given page of the sheet music. 
          * Page numbers start from 1.
          * A staff should fit within a single page, not be split across two pages.
@@ -1062,93 +1118,25 @@ namespace MidiSheetMusic {
             Rectangle clip = new Rectangle(0, 0, PageWidth, PageHeight);
 
             int ypos = TitleHeight;
-            int pagenum = 1;
-            int staffnum = 0;
 
-            if (numtracks == 2 && (staffs.Count % 2) == 0)
+            SheetMusicPage page = pages[pagenumber-1]; // Convert to zero indexing
+            if (pagenumber == 1)
             {
-                /* Skip the staffs until we reach the given page number */
-                while (staffnum + 1 < staffs.Count && pagenum < pagenumber)
-                {
-                    int heights = staffs[staffnum].Height + staffs[staffnum + 1].Height;
-                    if (ypos + heights >= viewPageHeight)
-                    {
-                        pagenum++;
-                        ypos = 0;
-                    }
-                    else
-                    {
-                        ypos += heights;
-                        staffnum += 2;
-                    }
-                }
-                /* Print the staffs until the height reaches viewPageHeight */
-                if (pagenum == 1)
-                {
-                    DrawTitle(g);
-                    ypos = TitleHeight;
-                }
-                else
-                {
-                    ypos = 0;
-                }
-                for (; staffnum + 1 < staffs.Count; staffnum += 2)
-                {
-                    int heights = staffs[staffnum].Height + staffs[staffnum + 1].Height;
-
-                    if (ypos + heights >= viewPageHeight)
-                        break;
-
-                    g.TranslateTransform(leftmargin, topmargin + ypos);
-                    staffs[staffnum].Draw(g, clip, pen);
-                    g.TranslateTransform(-leftmargin, -(topmargin + ypos));
-                    ypos += staffs[staffnum].Height;
-                    g.TranslateTransform(leftmargin, topmargin + ypos);
-                    staffs[staffnum + 1].Draw(g, clip, pen);
-                    g.TranslateTransform(-leftmargin, -(topmargin + ypos));
-                    ypos += staffs[staffnum + 1].Height;
-                }
+                DrawTitle(g);
+                ypos = TitleHeight;
             }
-
             else
             {
-                /* Skip the staffs until we reach the given page number */
-                while (staffnum < staffs.Count && pagenum < pagenumber)
-                {
-                    if (ypos + staffs[staffnum].Height >= viewPageHeight)
-                    {
-                        pagenum++;
-                        ypos = 0;
-                    }
-                    else
-                    {
-                        ypos += staffs[staffnum].Height;
-                        staffnum++;
-                    }
-                }
-
-                /* Print the staffs until the height reaches viewPageHeight */
-                if (pagenum == 1)
-                {
-                    DrawTitle(g);
-                    ypos = TitleHeight;
-                }
-                else
-                {
-                    ypos = 0;
-                }
-                for (; staffnum < staffs.Count; staffnum++)
-                {
-                    if (ypos + staffs[staffnum].Height >= viewPageHeight)
-                        break;
-
-                    g.TranslateTransform(leftmargin, topmargin + ypos);
-                    staffs[staffnum].Draw(g, clip, pen);
-                    g.TranslateTransform(-leftmargin, -(topmargin + ypos));
-                    ypos += staffs[staffnum].Height;
-                }
+                ypos = 0;
             }
-
+            foreach (Staff staff in page.staffs)
+            {
+                g.TranslateTransform(leftmargin, topmargin + ypos);
+                staff.Draw(g, clip, pen);
+                g.TranslateTransform(-leftmargin, -(topmargin + ypos));
+                ypos += staff.Height;
+            }
+            
             /* Draw the page number */
             Font font = new Font("Arial", 10, FontStyle.Bold);
             g.DrawString("" + pagenumber, font, Brushes.Black,
@@ -1164,41 +1152,7 @@ namespace MidiSheetMusic {
          */
         public int GetTotalPages()
         {
-            int num = 1;
-            int currheight = TitleHeight;
-
-            if (numtracks == 2 && (staffs.Count % 2) == 0)
-            {
-                for (int i = 0; i < staffs.Count; i += 2)
-                {
-                    int heights = staffs[i].Height + staffs[i + 1].Height;
-                    if (currheight + heights > PageHeight)
-                    {
-                        num++;
-                        currheight = heights;
-                    }
-                    else
-                    {
-                        currheight += heights;
-                    }
-                }
-            }
-            else
-            {
-                foreach (Staff staff in staffs)
-                {
-                    if (currheight + staff.Height > PageHeight)
-                    {
-                        num++;
-                        currheight = staff.Height;
-                    }
-                    else
-                    {
-                        currheight += staff.Height;
-                    }
-                }
-            }
-            return num;
+            return pages.Count;
         }
 
         /** Shade all the chords played at the given pulse time.
