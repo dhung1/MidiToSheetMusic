@@ -1105,6 +1105,42 @@ namespace MidiSheetMusic {
             return WriteEvents(stream, newevents, trackmode, quarternote);
         }
 
+        /** Write a time slice of this Midi file to the given stream
+         *  This is used for breaking a Midi file into pages
+         */
+        public bool WriteTimeSlice(Stream stream, int startTime, int endTime)
+        {
+            // TODO: What is this structure? arry of lists?
+            List<MidiEvent>[] newevents = new List<MidiEvent>()[];
+            for (int tracknum = 0; tracknum < newevents.Length, ++tracknum)
+            {
+                foreach (MidiEvent midiEvent in events[tracknum])
+                {
+                    // If starts before slice end time
+                    if (midiEvent.StartTime < endTime)
+                    {
+                        // TODO: Time slicing
+                        newevents[tracknum].Add(midiEvent);
+                    }
+
+                    // If ends after slice start time
+                    else if (midiEvent.StartTime + midiEvent.DeltaTime > startTime)
+                    {
+                        // TODO: Time slicing
+                        newevents[tracknum].Add(midiEvent);
+                    }
+                }
+            }
+            foreach (var midiEvent in events)
+            {
+                // TODO: Check if event's time falls within timeslice
+                // e.g. if midiEvent.endTime > startTime || midiEvent.startTime < endTime
+                // slice off excess time, and shift start times by startTime
+                MidiFile.ShiftTime(tracks, -startTime); // TODO: Fix tracks reference here
+            }
+            return WriteEvents(stream, newevents, trackmode, quarternote);
+        }
+
 
         /* Apply the following sound options to the midi events:
          * - The tempo (the microseconds per pulse)
